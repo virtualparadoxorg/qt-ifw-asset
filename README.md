@@ -18,8 +18,9 @@ deleted; the build number is raised to republish the same IFW and Qt versions (f
 
 ```
 bin/        binarycreator, installerbase, archivegen, repogen, devtool (.exe on Windows)
-licenses/   licenses of everything linked in: qt-installer-framework/, qt/, xz/, bzip2/ (Linux, Windows)
-VERSIONS    ifw=, qt=, xz=, bzip2= and platform=
+licenses/   licenses of everything linked in: qt-installer-framework/, qt/, xz/, bzip2/ (Linux, Windows),
+            zlib/ (Windows)
+VERSIONS    ifw=, qt=, xz=, bzip2=, zlib= and platform=
 README.txt  this summary and where the sources are
 ```
 
@@ -27,8 +28,8 @@ The files are at the archive root, so it unpacks straight into the target folder
 
 - Qt 6.9.3 is linked statically (qtbase, qtdeclarative for QtQml, qttools for QtUiTools, qt5compat), with its
   bundled zlib, libpng, libjpeg, PCRE2, HarfBuzz and double-conversion; no ICU, OpenSSL, D-Bus or SQL.
-- liblzma (xz 5.8.1) is linked statically everywhere, libbz2 (bzip2 1.0.8) on Linux and Windows; macOS uses the
-  system `libbz2` and `libiconv`.
+- liblzma (xz 5.8.1) is linked statically everywhere, libbz2 (bzip2 1.0.8) on Linux and Windows, zlib 1.3.1 on
+  Windows; macOS uses the system `libbz2`, `libz` and `libiconv`, Linux the system `libz`.
 - **macOS**: arm64 only, macOS 12 or later; links only to `/usr/lib` and system frameworks.
 - **Windows**: static MSVC runtime; links only to Windows system DLLs.
 - **Linux**: built on Ubuntu 24.04 (glibc 2.39); uses the desktop's X11/xcb, xkbcommon, fontconfig and FreeType
@@ -68,7 +69,7 @@ Maven Central needs no credentials.
 `build/build-ifw.sh <prefix>` builds everything from the upstream source archives, which it downloads and checks
 against pinned SHA-256 sums:
 
-1. xz (liblzma) and, on Linux and Windows, bzip2 (libbz2) as static libraries;
+1. xz (liblzma), on Linux and Windows bzip2 (libbz2), and on Windows zlib as static libraries;
 2. static Qt: qtbase with the options IFW's `INSTALL` recommends for the platform, then qtdeclarative, qttools and
    qt5compat;
 3. IFW with qmake against that Qt;
@@ -120,10 +121,11 @@ To republish the same versions (for example a build fix), raise only the last nu
 
 - The build scripts in this repository: MIT (`LICENSE`).
 - The published binaries: the Qt Installer Framework is licensed under the GNU GPL v3 with the Qt GPL exception
-  1.0; Qt under the GNU LGPL v3 (or GPL v2/v3); xz's liblzma is 0BSD; bzip2 under its BSD-style license. The
+  1.0; Qt under the GNU LGPL v3 (or GPL v2/v3); xz's liblzma is 0BSD; bzip2 under its BSD-style license; zlib under
+  the zlib license. The
   license texts are in the archive's `licenses/` folder. Installers created with these tools are covered by the
   Qt GPL exception.
 - Corresponding source: this repository's build script with the unmodified upstream archives it downloads:
   [Qt Installer Framework](https://download.qt.io/official_releases/qt-installer-framework/),
   [Qt](https://download.qt.io/archive/qt/), [xz](https://github.com/tukaani-project/xz/releases),
-  [bzip2](https://sourceware.org/pub/bzip2/).
+  [bzip2](https://sourceware.org/pub/bzip2/), [zlib](https://github.com/madler/zlib/releases).

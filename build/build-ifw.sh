@@ -18,13 +18,14 @@
 #
 # Pinned sources (checked against SHA-256): Qt Installer Framework 4.11.0, Qt 6.9.3 (qtbase,
 # qtdeclarative, qttools, qt5compat), xz 5.8.1; on Linux and Windows also bzip2 1.0.8; on
-# Windows also jom 1.1.4 (parallel nmake).
+# Windows also zlib 1.3.1 and jom 1.1.4 (parallel nmake).
 set -euo pipefail
 
 IFW_VERSION=4.11.0
 QT_VERSION=6.9.3
 XZ_VERSION=5.8.1
 BZIP2_VERSION=1.0.8
+ZLIB_VERSION=1.3.1
 JOM_VERSION=1.1.4
 
 fail() {
@@ -89,6 +90,7 @@ ifw_url=https://download.qt.io/official_releases/qt-installer-framework/$IFW_VER
 xz_url=https://github.com/tukaani-project/xz/releases/download/v$XZ_VERSION
 bzip2_url=https://sourceware.org/pub/bzip2
 jom_url=https://download.qt.io/official_releases/jom
+zlib_url=https://github.com/madler/zlib/releases/download/v$ZLIB_VERSION
 
 # name url sha256
 sources="
@@ -103,6 +105,12 @@ if [ "$platform" != macos ]; then
   # macOS has libbz2 in /usr/lib; elsewhere it is linked statically.
   sources="$sources
 bzip2-$BZIP2_VERSION.tar.gz $bzip2_url ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+fi
+if [ "$platform" = windows ]; then
+  # libarchive includes <zlib.h>; Qt's bundled zlib is prefixed and exported for C++ only, and macOS
+  # and Linux have a system zlib.
+  sources="$sources
+zlib-$ZLIB_VERSION.tar.gz $zlib_url 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
 fi
 
 # Downloads (kept between runs), verified, then unpacked into a fresh src/.
@@ -199,6 +207,25 @@ if [ "$platform" != macos ]; then
   bz_lib=$(ls "$bz_prefix"/lib/libbz2.*)
 fi
 
+# zlib (Windows): the library only, compiled directly.
+zlib_prefix=$work/zlib
+zlib_lib=""
+if [ "$platform" = windows ]; then
+  step "zlib $ZLIB_VERSION"
+  rm -rf "$zlib_prefix"
+  mkdir -p "$zlib_prefix/lib" "$zlib_prefix/include"
+  (
+    cd "$src/zlib-$ZLIB_VERSION"
+    objs="adler32 compress crc32 deflate gzclose gzlib gzread gzwrite infback inffast inflate inftrees trees uncompr zutil"
+    for o in $objs; do
+      cl.exe -nologo -c -O2 -MT -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE "$o.c" >/dev/null
+    done
+    lib.exe -nologo -OUT:"$(native "$zlib_prefix/lib/zlib.lib")" $(for o in $objs; do echo "$o.obj"; done)
+    cp zlib.h zconf.h "$zlib_prefix/include/"
+  )
+  zlib_lib=$zlib_prefix/lib/zlib.lib
+fi
+
 # Static Qt: the options IFW's INSTALL recommends for each platform, plus bundled third-party
 # libraries, so no external library is picked up (Linux keeps the system X11/xcb, fontconfig and
 # FreeType libraries a desktop has).
@@ -284,7 +311,7 @@ case "$platform" in
   windows)
     # liblzma is static: without LZMA_API_STATIC its header declares dllimport functions.
     qmake_args="$qmake_args INCLUDEPATH+=$(native "$bz_prefix/include") IFW_BZIP2_LIBRARY=$(native "$bz_lib")
-      DEFINES+=LZMA_API_STATIC"
+      INCLUDEPATH+=$(native "$zlib_prefix/include") IFW_ZLIB_LIBRARY=$(native "$zlib_lib") DEFINES+=LZMA_API_STATIC"
     ;;
 esac
 (
@@ -353,10 +380,15 @@ if [ "$platform" != macos ]; then
   mkdir -p "$lic/bzip2"
   cp "$src/bzip2-$BZIP2_VERSION/LICENSE" "$lic/bzip2/"
 fi
+if [ "$platform" = windows ]; then
+  mkdir -p "$lic/zlib"
+  cp "$src/zlib-$ZLIB_VERSION/LICENSE" "$lic/zlib/"
+fi
 
 {
   printf 'ifw=%s\nqt=%s\nxz=%s\n' "$IFW_VERSION" "$QT_VERSION" "$XZ_VERSION"
   [ "$platform" != macos ] && printf 'bzip2=%s\n' "$BZIP2_VERSION"
+  [ "$platform" = windows ] && printf 'zlib=%s\n' "$ZLIB_VERSION"
   printf 'platform=%s-%s\n' "$platform" "$arch"
 } > "$prefix/VERSIONS"
 step "done"

@@ -2,9 +2,9 @@ Qt Installer Framework tools, linked against a static Qt
 =======================================================
 
 bin/        binarycreator, installerbase, archivegen, repogen, devtool
-licenses/   licenses of the Qt Installer Framework, Qt, xz (liblzma) and, on Linux and
-            Windows, bzip2 (libbz2), all of which are linked into the tools
-VERSIONS    the versions built (Qt Installer Framework, Qt, xz, bzip2) and the platform
+licenses/   licenses of the Qt Installer Framework, Qt, xz (liblzma), on Linux and Windows
+            bzip2 (libbz2) and on Windows zlib, all of which are linked into the tools
+VERSIONS    the versions built (Qt Installer Framework, Qt, xz, bzip2, zlib) and the platform
 
 The tools need no Qt installation. On Linux they use the X11/xcb, fontconfig and FreeType
 libraries of the desktop.
@@ -23,3 +23,4 @@ Upstream sources:
     https://download.qt.io/archive/qt/
     https://github.com/tukaani-project/xz/releases
     https://sourceware.org/pub/bzip2/
+    https://github.com/madler/zlib/releases
