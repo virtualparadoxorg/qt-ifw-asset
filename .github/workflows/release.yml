@@ -154,7 +154,10 @@ jobs:
           CENTRAL_TOKEN_ID: ${{ secrets.CENTRAL_TOKEN_ID }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: mvn --batch-mode --no-transfer-progress deploy -Dgpg.keyname="$GPG_KEYNAME"
+        run: |
+          mvn --version
+          mvn --batch-mode --no-transfer-progress deploy -Dgpg.keyname="$GPG_KEYNAME"
+          unzip -l target/central-publishing/central-bundle.zip
 
       - name: Wait until Maven Central serves all classifiers
         run: |

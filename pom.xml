@@ -135,7 +135,9 @@
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.5.0</version>
+                <!-- 0.12.0 or later: older versions leave Maven 3.10's local metadata files in the
+                     bundle, which Central rejects ("content that does NOT have a .pom file"). -->
+                <version>0.12.0</version>
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
