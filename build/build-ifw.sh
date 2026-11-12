@@ -320,9 +320,14 @@ for tool in binarycreator installerbase archivegen repogen devtool; do
       ;;
     linux)
       # Qt, liblzma and libbz2 are linked in; what is left are the system libraries of a desktop.
-      ldd "$out" | sed 's/^/  /'
-      if ldd "$out" | grep -E 'libQt|liblzma|libbz2|not found'; then
-        fail "$tool links to a library that should be static or is missing"
+      # Direct dependencies only (ldd also lists e.g. FreeType's own libbz2).
+      needed=$(readelf -d "$out" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
+      echo "$needed" | sed 's/^/  /'
+      if echo "$needed" | grep -E 'libQt|liblzma|libbz2'; then
+        fail "$tool links to a library that should be static"
+      fi
+      if ldd "$out" | grep 'not found'; then
+        fail "$tool needs a library that is not installed"
       fi
       ;;
     windows)
