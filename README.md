@@ -73,7 +73,8 @@ against pinned SHA-256 sums:
 2. static Qt: qtbase with the options IFW's `INSTALL` recommends for the platform, then qtdeclarative, qttools and
    qt5compat;
 3. IFW with qmake against that Qt;
-4. checks the result (macOS: arm64 only and only system libraries; Linux: `ldd`; Windows: `dumpbin /dependents`),
+4. checks the result (macOS: arm64 only and only system libraries; Linux: `readelf -d`, no Qt, liblzma or libbz2;
+   Windows: `dumpbin /dependents`),
    and copies the licenses.
 
 `build/package-ifw.sh <prefix> <archive>` packs it; `build/smoke-test.sh <prefix>` runs `binarycreator --help`
