@@ -1,0 +1,173 @@
+# Builds the Qt Installer Framework against a static Qt on macOS arm64, Linux x86_64 and Windows
+# x86_64, smoke-tests each build, then publishes the three archives in one deployment to Maven
+# Central as eu.virtualparadox:qt-ifw:<version in pom.xml>:<type>:<classifier>.
+#
+# Manual only. Central releases are immutable: bump the build number in pom.xml (…-qt6.9.3-N)
+# before running with publish = true again. publish = false builds and tests only.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: publish the version in pom.xml to Maven Central
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  params:
+    name: Parameters
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: v
+        env:
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          version=$(sed -n 's:^    <version>\(.*\)</version>$:\1:p' pom.xml | head -1)
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-qt[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$' ||
+            { echo "::error::unexpected version in pom.xml: '$version'"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          url=https://repo1.maven.org/maven2/eu/virtualparadox/qt-ifw/$version/qt-ifw-$version.pom
+          if [ "$PUBLISH" = true ] && [ "$(curl -s -o /dev/null -w '%{http_code}' "$url")" = 200 ]; then
+            echo "::error::qt-ifw $version is already on Maven Central: bump the build number in pom.xml"
+            exit 1
+          fi
+          echo "qt-ifw $version (publish: $PUBLISH)" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build ${{ matrix.classifier }}
+    needs: params
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            classifier: macos-aarch64
+            ext: tar.gz
+          - os: ubuntu-latest
+            classifier: linux-x86_64
+            ext: tar.gz
+          - os: windows-latest
+            classifier: windows-x86_64
+            ext: zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    env:
+      ARCHIVE: target/dist/qt-ifw-${{ needs.params.outputs.version }}-${{ matrix.classifier }}.${{ matrix.ext }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends $(cat build/linux-packages.txt) xvfb
+
+      - name: MSVC developer environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+
+      - name: Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          command -v ninja || choco install ninja -y --no-progress
+          ninja --version
+
+      - name: Build IFW against a static Qt
+        env:
+          # Short on Windows: Qt's build tree has long paths.
+          IFW_BUILD_DIR: ${{ runner.os == 'Windows' && 'C:/w' || format('{0}/ifw-build', runner.temp) }}
+        run: build/build-ifw.sh target/ifw
+
+      - name: Package
+        run: build/package-ifw.sh target/ifw "$ARCHIVE"
+
+      - name: Smoke test (the unpacked archive)
+        run: |
+          mkdir -p target/unpacked
+          case "$ARCHIVE" in
+            *.zip) unzip -q "$ARCHIVE" -d target/unpacked ;;
+            *) tar -xzf "$ARCHIVE" -C target/unpacked ;;
+          esac
+          build/smoke-test.sh target/unpacked target/smoke
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.classifier }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish to Maven Central
+    if: inputs.publish
+    needs: [params, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.params.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          server-id: central
+          server-username: CENTRAL_TOKEN_ID
+          server-password: CENTRAL_TOKEN_PASSWORD
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: target/dist
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          ls -l target/dist
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          keyid=$(gpg --list-secret-keys --with-colons | awk -F: '$1 == "sec" {print $5; exit}')
+          [ -n "$keyid" ] || { echo "::error::no secret key imported (GPG_PRIVATE_KEY)"; exit 1; }
+          echo "GPG_KEYNAME=$keyid" >> "$GITHUB_ENV"
+
+      # Secrets: the virtualparadoxorg organization secrets (or repository secrets of the same names).
+      - name: Deploy to Maven Central
+        env:
+          CENTRAL_TOKEN_ID: ${{ secrets.CENTRAL_TOKEN_ID }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          mvn --version
+          mvn --batch-mode --no-transfer-progress deploy -Dgpg.keyname="$GPG_KEYNAME"
+          unzip -l target/central-publishing/central-bundle.zip
+
+      - name: Wait until Maven Central serves all classifiers
+        run: |
+          base=https://repo1.maven.org/maven2/eu/virtualparadox/qt-ifw/$VERSION
+          for file in macos-aarch64.tar.gz linux-x86_64.tar.gz windows-x86_64.zip; do
+            url=$base/qt-ifw-$VERSION-$file
+            for i in $(seq 1 60); do
+              [ "$(curl -s -o /dev/null -w '%{http_code}' "$url")" = 200 ] && break
+              [ "$i" = 60 ] && { echo "::error::not on Maven Central after 60 min: $url"; exit 1; }
+              sleep 60
+            done
+            echo "$url" | tee -a "$GITHUB_STEP_SUMMARY"
+          done

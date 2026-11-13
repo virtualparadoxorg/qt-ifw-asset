@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Publishes the archives built by .github/workflows/release.yml to Maven Central:
+    eu.virtualparadox:qt-ifw:<version>:tar.gz:macos-aarch64
+    eu.virtualparadox:qt-ifw:<version>:tar.gz:linux-x86_64
+    eu.virtualparadox:qt-ifw:<version>:zip:windows-x86_64
+  The archives are expected in ${ifw.dist} (default target/dist) under the names
+  qt-ifw-<version>-<classifier>.<ext>. Run by the workflow: mvn deploy.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>eu.virtualparadox</groupId>
+    <artifactId>qt-ifw</artifactId>
+    <!-- <IFW version>-qt<Qt version>-<build number>: Central releases are immutable, the build
+         number is bumped to republish the same IFW/Qt versions. -->
+    <version>4.11.0-qt6.9.3-1</version>
+    <packaging>pom</packaging>
+
+    <name>Qt Installer Framework binaries</name>
+    <description>Prebuilt Qt Installer Framework 4.11.0 tools (binarycreator, installerbase, archivegen,
+        repogen, devtool) linked against a static Qt 6.9.3, for macOS arm64, Linux x86_64 and Windows x86_64.
+        One archive per platform, selected by classifier.</description>
+    <url>https://github.com/virtualparadoxorg/qt-ifw-asset</url>
+
+    <licenses>
+        <license>
+            <name>GPL-3.0-only WITH Qt-GPL-exception-1.0</name>
+            <url>https://www.gnu.org/licenses/gpl-3.0.txt</url>
+            <distribution>repo</distribution>
+            <comments>Qt Installer Framework, with the Qt GPL exception 1.0 for the installers it creates</comments>
+        </license>
+        <license>
+            <name>LGPL-3.0-only</name>
+            <url>https://www.gnu.org/licenses/lgpl-3.0.txt</url>
+            <distribution>repo</distribution>
+            <comments>Qt (statically linked); also available under GPL-2.0-only or GPL-3.0-only</comments>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git://github.com/virtualparadoxorg/qt-ifw-asset.git</connection>
+        <developerConnection>scm:git:ssh://github.com:virtualparadoxorg/qt-ifw-asset.git</developerConnection>
+        <url>https://github.com/virtualparadoxorg/qt-ifw-asset</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <developers>
+        <developer>
+            <id>tothpeter</id>
+            <name>Péter Tóth</name>
+            <email>peter.toth@virtualparadox.eu</email>
+            <organization>Virtual Paradox</organization>
+            <organizationUrl>https://virtualparadox.eu</organizationUrl>
+        </developer>
+    </developers>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <ifw.dist>${project.build.directory}/dist</ifw.dist>
+        <gpg.keyname>0C4238D5A8FF369A</gpg.keyname>
+    </properties>
+
+    <distributionManagement>
+        <repository>
+            <id>central</id>
+            <url>https://central.sonatype.com/api/v1/publisher/upload</url>
+        </repository>
+    </distributionManagement>
+
+    <build>
+        <plugins>
+            <!-- The platform archives -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-archives</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>attach-artifact</goal>
+                        </goals>
+                        <configuration>
+                            <artifacts>
+                                <artifact>
+                                    <file>${ifw.dist}/${project.artifactId}-${project.version}-macos-aarch64.tar.gz</file>
+                                    <type>tar.gz</type>
+                                    <classifier>macos-aarch64</classifier>
+                                </artifact>
+                                <artifact>
+                                    <file>${ifw.dist}/${project.artifactId}-${project.version}-linux-x86_64.tar.gz</file>
+                                    <type>tar.gz</type>
+                                    <classifier>linux-x86_64</classifier>
+                                </artifact>
+                                <artifact>
+                                    <file>${ifw.dist}/${project.artifactId}-${project.version}-windows-x86_64.zip</file>
+                                    <type>zip</type>
+                                    <classifier>windows-x86_64</classifier>
+                                </artifact>
+                            </artifacts>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Sign -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>3.2.4</version>
+                <configuration>
+                    <keyname>${gpg.keyname}</keyname>
+                    <passphrase>${env.GPG_PASSPHRASE}</passphrase>
+                    <gpgArguments>
+                        <arg>--pinentry-mode</arg>
+                        <arg>loopback</arg>
+                    </gpgArguments>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Central Portal: publish without a manual step and wait until it is published -->
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <!-- 0.12.0 or later: older versions leave Maven 3.10's local metadata files in the
+                     bundle, which Central rejects ("content that does NOT have a .pom file"). -->
+                <version>0.12.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <waitUntil>published</waitUntil>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
